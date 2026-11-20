@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarSync · live dashboard</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --surface-0: #f4f3f0; --surface-1: #fcfcfb; --border: #e2e0da;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --series-1: #2a78d6; --band: rgba(42,120,214,0.14); --untrusted: #a3a29c; --grid: #e9e8e3;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b; --neutral: #a3a29c;
+  --good-text: #006300; --critical-text: #b42c2c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --border: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --band: rgba(57,135,229,0.20); --untrusted: #6d6c66; --grid: #2a2a27;
+    --good-text: #3fcf3f; --critical-text: #ff7b7b;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.viz-root { background: var(--surface-0); color: var(--text-primary); min-height: 100vh; padding: 16px 20px 32px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 14px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: var(--text-primary); }
+.muted { color: var(--text-muted); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); font-size: 13px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.grid { display: grid; gap: 12px; }
+.kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 12px; }
+.kpi .label { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+.kpi .value { font-size: 30px; font-weight: 650; letter-spacing: -.01em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.kpi .value small { font-size: 15px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.kpi .sub { font-size: 12px; color: var(--text-secondary); min-height: 18px; }
+.ok { color: var(--good-text); font-weight: 600; }
+.bad { color: var(--critical-text); font-weight: 600; }
+.two { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); margin-bottom: 12px; }
+table.kv { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.kv td { padding: 5px 0; border-bottom: 1px solid var(--grid); }
+table.kv td:first-child { color: var(--text-secondary); width: 46%; }
+table.kv td:last-child { font-weight: 600; text-align: right; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.charts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 12px; }
+@media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.chart-head h2 { margin: 0; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.swb { width: 12px; height: 10px; border-radius: 2px; display: inline-block; }
+svg { display: block; width: 100%; overflow: visible; }
+svg text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.wrap { position: relative; }
+.tip { position: absolute; top: 0; left: 0; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px;
+       padding: 5px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.12); display: none; z-index: 2; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; font-size: 13px; padding: 7px 11px; border-radius: 7px; border: 1px solid var(--border);
+         background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
+button:hover { border-color: var(--series-1); }
+button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+select, input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); }
+input { flex: 1; min-width: 160px; }
+pre { margin: 10px 0 0; padding: 8px 10px; background: var(--surface-0); border-radius: 7px; font-size: 12px; white-space: pre-wrap; min-height: 34px; }
+ol.log { margin: 0; padding: 0; list-style: none; max-height: 300px; overflow: auto; font-size: 13px; }
+ol.log li { padding: 4px 0; border-bottom: 1px solid var(--grid); display: flex; gap: 10px; }
+ol.log li b { font-weight: 500; color: var(--text-muted); min-width: 56px; font-variant-numeric: tabular-nums; }
+.banner { display: none; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--warning); background: var(--surface-1); }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <header>
+    <h1>StarSync · live</h1>
+    <span class="pill" id="live"><span class="dot" style="background:var(--neutral)"></span>waiting for data</span>
+    <span class="pill" id="vega">VEGA —</span>
+    <span class="pill" id="altair">ALTAIR —</span>
+    <span class="muted" id="meta">tolerance ±— µs</span>
+  </header>
+  <div class="banner" id="banner"></div>
+
+  <!-- the six key metrics from the problem sheet -->
+  <section class="grid kpis">
+    <div class="card kpi"><div class="label">Maximum inter-node clock offset</div>
+      <div class="value" id="k-max">—</div><div class="sub" id="k-max-sub"></div></div>
+    <div class="card kpi"><div class="label">Residual drift rate</div>
+      <div class="value" id="k-drift">—</div><div class="sub" id="k-drift-sub"></div></div>
+    <div class="card kpi"><div class="label">Timestamp jitter (std dev)</div>
+      <div class="value" id="k-jit">—</div><div class="sub" id="k-jit-sub"></div></div>
+    <div class="card kpi"><div class="label">Event-ordering errors</div>
+      <div class="value" id="k-ord">—</div><div class="sub" id="k-ord-sub"></div></div>
+    <div class="card kpi"><div class="label">Time outside declared tolerance</div>
+      <div class="value" id="k-out">—</div><div class="sub" id="k-out-sub"></div></div>
+    <div class="card kpi"><div class="label">Synchronisation recovery time</div>
+      <div class="value" id="k-rec">—</div><div class="sub" id="k-rec-sub"></div></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card"><h2>Mandatory CLI outputs · ALTAIR</h2>
+      <table class="kv">
+        <tr><td>Synchronisation state</td><td id="c-state">—</td></tr>
+        <tr><td>Timestamp validity</td><td id="c-valid">—</td></tr>
+        <tr><td>Raw offset (ALTAIR raw − VEGA)</td><td id="c-raw">—</td></tr>
+        <tr><td>Corrected offset (ALTAIR corrected − VEGA)</td><td id="c-corr">—</td></tr>
+        <tr><td>Drift estimate</td><td id="c-drift">—</td></tr>
+        <tr><td>Message delay (one-way)</td><td id="c-delay">—</td></tr>
+        <tr><td>Recovery time (last)</td><td id="c-rec">—</td></tr>
+        <tr><td>Uncertainty U (±)</td><td id="c-u">—</td></tr>
+        <tr><td>Loss detected after</td><td id="c-det">—</td></tr>
+      </table>
+    </div>
+    <div class="card"><h2>Integrity checks</h2>
+      <table class="kv">
+        <tr><td>Monotonic corrected timestamps</td><td id="i-mono">—</td></tr>
+        <tr><td>Trusted but outside tolerance</td><td id="i-tbo">—</td></tr>
+        <tr><td>Honesty (real offset inside claimed ±U)</td><td id="i-hon">—</td></tr>
+        <tr><td>Trusted share of timestamps</td><td id="i-trust">—</td></tr>
+        <tr><td>Event ordering detail</td><td id="i-ord">—</td></tr>
+        <tr><td>Watchdog restarts (VEGA / ALTAIR)</td><td id="i-wd">—</td></tr>
+        <tr><td>QNX timer wake-up late, avg / max (ALTAIR)</td><td id="i-lat">—</td></tr>
+        <tr><td>Metrics measured from</td><td id="i-src">—</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid charts">
+    <div class="card"><div class="chart-head"><h2>Inter-node offset, µs</h2>
+      <div class="legend"><span><i class="sw" style="background:var(--series-1)"></i>trusted</span>
+        <span><i class="swb" style="background:var(--band)"></i>claimed ±U</span>
+        <span><i class="sw" style="background:var(--untrusted)"></i>unreliable</span>
+        <span><i class="sw" style="border-top:2px dashed var(--text-muted);height:0"></i>±tolerance</span></div></div>
+      <div class="wrap"><svg id="ch-off" viewBox="0 0 600 240"></svg><div class="tip"></div></div></div>
+    <div class="card"><div class="chart-head"><h2>Synchronisation state (ALTAIR)</h2>
+      <div class="legend" id="st-legend"></div></div>
+      <div class="wrap"><svg id="ch-state" viewBox="0 0 600 240"></svg><div class="tip"></div></div></div>
+    <div class="card"><div class="chart-head"><h2>Drift estimate, ppm</h2><span class="muted" style="font-size:12px">ALTAIR crystal vs VEGA</span></div>
+      <div class="wrap"><svg id="ch-drift" viewBox="0 0 600 180"></svg><div class="tip"></div></div></div>
+    <div class="card"><div class="chart-head"><h2>Message delay, µs</h2><span class="muted" style="font-size:12px">PTP mean path delay</span></div>
+      <div class="wrap"><svg id="ch-delay" viewBox="0 0 600 180"></svg><div class="tip"></div></div></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card"><h2>The hack · inject faults</h2>
+      <div class="buttons">
+        <button data-t="altair" data-c="drift 20">Drift +20 ppm</button>
+        <button data-t="altair" data-c="ramp 0.5">Gradual drift 0.5 ppm/s</button>
+        <button data-t="altair" data-c="clear">Clear drift</button>
+        <button data-t="all" data-c="delay 0 2000">Variable delay 0–2 ms</button>
+        <button data-t="vega" data-c="asym 300">One-way delay +300 µs</button>
+        <button data-t="all" data-c="netoff">Network faults off</button>
+        <button data-t="all" data-c="blackout 15">Sync loss 15 s</button>
+        <button data-t="altair" data-c="step -3000">Clock step −3 ms</button>
+        <button data-t="vega" data-c="health fault">VEGA faulty</button>
+        <button data-t="vega" data-c="health ok">VEGA healthy</button>
+        <button data-t="altair" data-c="hang servo 2000">Freeze a thread (watchdog)</button>
+      </div>
+      <div class="row">
+        <button class="primary" data-t="local" data-c="calibrate">Calibrate asymmetry</button>
+        <button data-t="local" data-c="reset">Reset scores</button>
+        <select id="tgt"><option value="altair">ALTAIR</option><option value="vega">VEGA</option><option value="all">both</option></select>
+        <input id="cmd" placeholder="any command, e.g. tol 50" aria-label="custom command">
+        <button id="send">Send</button>
+      </div>
+      <pre id="out" aria-live="polite">replies appear here</pre>
+    </div>
+    <div class="card"><h2>What happened</h2><ol class="log" id="log"><li class="muted">nothing yet</li></ol></div>
+  </section>
+</div>
+
+<script>
+const STATE_COLOR = { LOCKED: "var(--good)", REFERENCE: "var(--good)", DEGRADED: "var(--warning)",
+  RECOVERING: "var(--serious)", HOLDOVER: "var(--serious)", ACQUIRING: "var(--neutral)", INIT: "var(--neutral)" };
+const VALID_COLOR = { VALID: "var(--good)", PREDICTED: "var(--warning)", UNRELIABLE: "var(--critical)" };
+const STATES = ["LOCKED", "DEGRADED", "HOLDOVER", "RECOVERING", "ACQUIRING"];
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 1) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toFixed(d);
+const sgn = (v, d = 1) => (v === null || v === undefined || isNaN(v)) ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(d);
+const badge = (txt, color) => `<span class="badge"><span class="dot" style="background:${color}"></span>${txt}</span>`;
+
+document.getElementById("st-legend").innerHTML = STATES.map(s =>
+  `<span><i class="swb" style="background:${STATE_COLOR[s]}"></i>${s}</span>`).join("");
+
+/* ---------- helpers shared by the charts ---------- */
+/* niceTicks(): round tick values (1, 2, 2.5, 5 x 10^n) covering lo..hi for a y axis. */
+function niceTicks(lo, hi, n = 5) {
+  const raw = (hi - lo) / (n - 1), mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(k => k >= raw) || 10 * mag;
+  const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step, out = [];
+  for (let v = a; v <= b + step / 2; v += step) out.push(+v.toFixed(6));
+  return { ticks: out, lo: a, hi: b, step };
+}
+/* sizeSvg(): sets the chart's viewBox to its real width, so 1 svg unit = 1 css pixel
+ * (text keeps its size whatever the window width). */
+function sizeSvg(svg) {
+  const W = Math.max(280, Math.round(svg.clientWidth || 600)), H = +svg.getAttribute("viewBox").split(" ")[3];
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); return [W, H];
+}
+/* placeTip(): shows the hover tooltip next to the mouse, kept inside the chart. */
+function placeTip(tip, svg, e, html) {
+  const r = svg.getBoundingClientRect();
+  tip.innerHTML = html; tip.style.display = "block";
+  const tx = e.clientX - r.left + 14, ty = e.clientY - r.top + 14;
+  tip.style.left = Math.min(r.width - tip.offsetWidth - 4, tx) + "px";
+  tip.style.top = Math.min(r.height - tip.offsetHeight - 4, ty) + "px";
+}
+/* timeAxis(): the x-axis labels ("now", "-30 s", ...) for the last minutes. */
+function timeAxis(x, t0, t1, H) {
+  let s = "", step = (t1 - t0) > 120 ? 60 : (t1 - t0) > 50 ? 30 : 10;
+  for (let a = 0; a <= t1 - t0 + 0.01; a += step)
+    s += `<text x="${x(t1 - a)}" y="${H - 6}" text-anchor="middle">${a ? "−" + a + " s" : "now"}</text>`;
+  return s;
+}
+
+/* ---------- line chart with optional ±U band and tolerance lines ---------- */
+/* lineChart(): draws a time series with optional +-U band and +-tolerance lines, plus the
+ * hover crosshair. Used for the true offset (SKY pulses) and ALTAIR's PTP view. */
+function lineChart(svg, pts, o) {
+  const [W, H] = sizeSvg(svg), L = 48, R = 12, T = 10, B = 24;
+  if (!pts.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle">waiting for data</text>`; return; }
+  const t1 = pts[pts.length - 1].t, t0 = Math.max(pts[0].t, t1 - 180);
+  const vis = pts.filter(p => p.t >= t0);
+  let lo = Infinity, hi = -Infinity;
+  for (const p of vis) if (p.ok !== false) { const u = o.band ? (p.u || 0) : 0; lo = Math.min(lo, p.y - u); hi = Math.max(hi, p.y + u); }
+  if (!isFinite(lo)) for (const p of vis) { lo = Math.min(lo, p.y); hi = Math.max(hi, p.y); }
+  if (o.tol) { lo = Math.min(lo, -o.tol); hi = Math.max(hi, o.tol); }
+  if (o.clip) { lo = Math.max(lo, -o.clip); hi = Math.min(hi, o.clip); }
+  if (o.zero) lo = Math.min(0, lo);
+  if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
+  const nt = niceTicks(lo, hi); lo = nt.lo; hi = nt.hi;
+  const x = t => L + (t - t0) / Math.max(1e-6, t1 - t0) * (W - L - R);
+  const y = v => T + (hi - Math.min(hi, Math.max(lo, v))) / (hi - lo) * (H - T - B);
+  const dec = nt.step < 1 ? (nt.step < 0.1 ? 2 : 1) : 0;
+  let s = "";
+  for (const v of nt.ticks) {
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/>`;
+    s += `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v.toFixed(dec)}</text>`;
+  }
+  s += timeAxis(x, t0, t1, H);
+  if (o.tol) for (const v of [o.tol, -o.tol])
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--text-muted)" stroke-dasharray="5 4"/>`;
+  if (o.band) {                                      /* claimed ±U, drawn per trusted run */
+    let run = [];
+    const flushBand = () => {
+      if (run.length > 1) {
+        let d = "M" + run.map(p => `${x(p.t)},${y(p.y + p.u)}`).join("L");
+        d += "L" + run.slice().reverse().map(p => `${x(p.t)},${y(p.y - p.u)}`).join("L") + "Z";
+        s += `<path d="${d}" fill="var(--band)" stroke="none"/>`;
+      }
+      run = [];
+    };
+    for (const p of vis) { if (p.ok === false) flushBand(); else run.push(p); }
+    flushBand();
+  }
+  let seg = [];                                      /* trusted line, broken where unreliable */
+  const flush = () => { if (seg.length > 1) s += `<path d="M${seg.join("L")}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>`; seg = []; };
+  for (const p of vis) {
+    if (p.ok === false) { flush(); s += `<circle cx="${x(p.t)}" cy="${y(p.y)}" r="2.5" fill="var(--untrusted)"/>`; }
+    else seg.push(`${x(p.t)},${y(p.y)}`);
+  }
+  flush();
+  s += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--text-muted)" visibility="hidden"/>`;
+  s += `<circle class="xp" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2" visibility="hidden"/>`;
+  svg.innerHTML = s;
+  const tip = svg.parentNode.querySelector(".tip");
+  svg.onmousemove = e => {
+    const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * W;
+    let best = vis[0]; for (const p of vis) if (Math.abs(x(p.t) - mx) < Math.abs(x(best.t) - mx)) best = p;
+    const xh = svg.querySelector(".xh"), xp = svg.querySelector(".xp");
+    xh.setAttribute("x1", x(best.t)); xh.setAttribute("x2", x(best.t)); xh.setAttribute("visibility", "visible");
+    xp.setAttribute("cx", x(best.t)); xp.setAttribute("cy", y(best.y)); xp.setAttribute("visibility", "visible");
+    placeTip(tip, svg, e, `${fmt(best.t - t1, 1)} s · ` + o.tipText(best));
+  };
+  svg.onmouseleave = () => { tip.style.display = "none"; for (const c of svg.querySelectorAll(".xh,.xp")) c.setAttribute("visibility", "hidden"); };
+}
+
+/* ---------- state timeline: one solid band per stretch of time in a state ---------- */
+/* stateChart(): ALTAIR's state over time, one coloured lane per state
+ * (LOCKED, DEGRADED, HOLDOVER, RECOVERING, ACQUIRING). */
+function stateChart(svg, rows) {
+  const [W, H] = sizeSvg(svg), L = 92, R = 12, T = 6, B = 24;
+  if (!rows.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle">waiting for data</text>`; return; }
+  const t1 = rows[rows.length - 1][0], t0 = Math.max(rows[0][0], t1 - 180);
+  const x = t => L + (Math.max(t, t0) - t0) / Math.max(1e-6, t1 - t0) * (W - L - R);
+  const lane = (H - T - B) / STATES.length;
+  const runs = [];                                   /* merge consecutive rows with the same state */
+  for (const r of rows) {
+    const last = runs[runs.length - 1];
+    if (last && last.state === r[1]) last.end = r[0]; else { if (last) last.end = r[0]; runs.push({ state: r[1], start: r[0], end: r[0], U: r[3], v: r[2] }); }
+  }
+  let s = "";
+  STATES.forEach((st, i) => {
+    s += `<text x="${L - 8}" y="${T + lane * i + lane / 2 + 4}" text-anchor="end">${st}</text>`;
+    if (i) s += `<line x1="${L}" x2="${W - R}" y1="${T + lane * i}" y2="${T + lane * i}" stroke="var(--grid)"/>`;
+  });
+  for (const r of runs) {
+    const k = STATES.indexOf(r.state); if (k < 0 || r.end < t0) continue;
+    const w = Math.max(2, x(r.end) - x(r.start));
+    s += `<rect x="${x(r.start)}" y="${T + lane * k + 5}" width="${w}" height="${lane - 10}" rx="2" fill="${STATE_COLOR[r.state]}"/>`;
+  }
+  s += timeAxis(x, t0, t1, H);
+  svg.innerHTML = s;
+  const tip = svg.parentNode.querySelector(".tip");
+  svg.onmousemove = e => {
+    const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * W;
+    let best = rows[0]; for (const q of rows) if (Math.abs(x(q[0]) - mx) < Math.abs(x(best[0]) - mx)) best = q;
+    placeTip(tip, svg, e, `${fmt(best[0] - t1, 1)} s · <b>${best[1]}</b> · ${best[2]} · U ±${best[3] > 9e4 ? "unknown" : fmt(best[3]) + " µs"}`);
+  };
+  svg.onmouseleave = () => tip.style.display = "none";
+}
+
+/* ---------- fill the page ---------- */
+/* render(): fills the whole page from one /data answer: metric tiles, node cards,
+ * charts and the event log. */
+function render(d) {
+  const m = d.metrics, tol = m.tol_us, A = d.nodes.ALTAIR, V = d.nodes.VEGA;
+  const fresh = A && A.age_s < 3;
+  $("live").innerHTML = fresh ? `<span class="dot" style="background:var(--good)"></span>live · ${fmt(d.t, 0)} s`
+                              : `<span class="dot" style="background:var(--critical)"></span>${A ? "ALTAIR silent " + fmt(A.age_s, 0) + " s" : "no data from ALTAIR"}`;
+  $("vega").innerHTML = V ? `VEGA ${badge(V.state, STATE_COLOR[V.state] || "var(--neutral)")} ${V.validity}` : "VEGA —";
+  $("altair").innerHTML = A ? `ALTAIR ${badge(A.state, STATE_COLOR[A.state] || "var(--neutral)")} ${badge(A.validity, VALID_COLOR[A.validity])}` : "ALTAIR —";
+  $("meta").textContent = `tolerance ±${fmt(tol, 0)} µs`;
+  const banner = $("banner");
+  if (m.source === "ptp") {
+    banner.style.display = "block";
+    const sn = d.seen || { VEGA: { C: 0 }, ALTAIR: { C: 0 }, TR: 0 };
+    banner.innerHTML = `<b>No SKY pulse pairs yet</b>, so the offset metrics show ALTAIR's own PTP view. `
+      + `Pulse edges received: VEGA ${sn.VEGA.C}, ALTAIR ${sn.ALTAIR.C}; SKY truth lines ${sn.TR}. ${d.hint || ""}`;
+  }
+  else banner.style.display = "none";
+
+  /* six key metrics */
+  const inTol = m.max_offset_us <= tol;
+  $("k-max").innerHTML = `${fmt(m.max_offset_us)}<small>µs</small>`;
+  $("k-max-sub").innerHTML = (m.source === "pulses" || A) ? `<span class="${inTol ? "ok" : "bad"}">${inTol ? "✓ within" : "✗ beyond"} ±${fmt(tol, 0)} µs</span> · all stamps ${fmt(m.max_offset_all_us)} µs` : "";
+  $("k-drift").innerHTML = `${sgn(m.residual_drift_ppb)}<small>ppb</small>`;
+  $("k-drift-sub").textContent = A ? `after correction · raw crystal drift ${sgn(A.drift_ppm, 3)} ppm` : "";
+  $("k-jit").innerHTML = `${fmt(m.jitter_us, 2)}<small>µs</small>`;
+  $("k-jit-sub").textContent = `offset now ${sgn(m.offset_now_us)} µs`;
+  const o = m.order;
+  const judged = o.ok + o.wrong + o.close + o.unreliable;
+  $("k-ord").innerHTML = judged ? `${o.wrong}<small>of ${judged}</small>` : "—";
+  $("k-ord-sub").innerHTML = judged
+    ? `<span class="${o.wrong ? "bad" : "ok"}">${o.wrong ? "✗ wrong order seen" : "✓ none wrong"}</span> · correct ${o.ok} · too close to call ${o.close} · finest gap ${o.best_gap ? o.best_gap + " µs" : "—"}`
+    : "waiting for ordering pairs from SKY";
+  $("k-out").innerHTML = `${fmt(m.outside_s)}<small>s</small>`;
+  $("k-out-sub").innerHTML = `trusted but outside: <span class="${m.outside_trusted_s > 0 ? "bad" : "ok"}">${fmt(m.outside_trusted_s)} s</span>`;
+  $("k-rec").innerHTML = m.recovery_last_ms !== null ? `${fmt(m.recovery_last_ms, 0)}<small>ms</small>` : "—";
+  $("k-rec-sub").textContent = m.recoveries.length ? `max ${fmt(m.recovery_max_ms, 0)} ms · ${m.recoveries.length} recoveries` : "no sync loss yet";
+
+  /* mandatory CLI */
+  if (A) {
+    $("c-state").innerHTML = badge(A.state, STATE_COLOR[A.state] || "var(--neutral)");
+    $("c-valid").innerHTML = badge(A.validity, VALID_COLOR[A.validity]);
+    $("c-raw").textContent = `${sgn(A.raw_offset_us, 1)} µs`;
+    $("c-corr").textContent = `${sgn(A.corr_offset_us, 1)} µs`;
+    $("c-drift").textContent = `${sgn(A.drift_ppm, 3)} ppm`;
+    $("c-delay").textContent = `${fmt(A.delay_us)} µs`;
+    $("c-rec").textContent = A.recovery_ms > 0 ? `${fmt(A.recovery_ms, 0)} ms` : "—";
+    $("c-u").textContent = A.U_us > 9e4 ? "unknown" : `±${fmt(A.U_us)} µs`;
+    $("c-det").textContent = A.detect_ms > 0 ? `${fmt(A.detect_ms, 0)} ms` : "—";
+  }
+  /* integrity */
+  const mono = Object.entries(m.monotonic);
+  const back = mono.reduce((a, [, v]) => a + v.violations, 0), chk = mono.reduce((a, [, v]) => a + v.checked, 0);
+  $("i-mono").innerHTML = chk ? `<span class="${back ? "bad" : "ok"}">${back ? "✗ " + back + " went back" : "✓ never went back"}</span> (${chk})` : "—";
+  $("i-tbo").innerHTML = `<span class="${m.outside_trusted_s > 0 ? "bad" : "ok"}">${fmt(m.outside_trusted_s)} s</span>`;
+  $("i-hon").textContent = `${fmt(m.honesty)} %`;
+  $("i-trust").textContent = `${fmt(m.trusted_pct)} %`;
+  $("i-ord").textContent = `correct ${o.ok} · wrong ${o.wrong} · too close ${o.close} · naive errors ${o.naive_wrong}`;
+  $("i-wd").textContent = `${V ? V.restarts : "—"} / ${A ? A.restarts : "—"}`;
+  $("i-lat").textContent = A && A.lat_avg_us !== null ? `${fmt(A.lat_avg_us)} / ${fmt(A.lat_max_us)} µs` : "—";
+  $("i-src").textContent = m.source === "pulses" ? `SKY pulses (${m.pulses}, true offset)` : "ALTAIR's own PTP view";
+
+  /* charts */
+  const off = d.offset_series.length
+    ? d.offset_series.map(r => ({ t: r[0], y: r[1], u: r[2], ok: r[3] }))
+    : d.ptp_series.map(r => ({ t: r[0], y: r[4], u: Math.min(r[3], 5 * tol), ok: r[2] !== "UNRELIABLE" }));
+  lineChart($("ch-off"), off, { tol, band: true, clip: 3 * tol,
+    tipText: p => `offset <b>${sgn(p.y, 1)} µs</b> · claimed ±${fmt(p.u, 1)} µs · ${p.ok ? "trusted" : "unreliable"}` });
+  stateChart($("ch-state"), d.ptp_series);
+  const pts = d.ptp_series;
+  lineChart($("ch-drift"), pts.map(r => ({ t: r[0], y: r[5] })), { tipText: p => `drift <b>${sgn(p.y, 3)} ppm</b>` });
+  lineChart($("ch-delay"), pts.map(r => ({ t: r[0], y: r[6] })), { zero: true, tipText: p => `delay <b>${fmt(p.y, 1)} µs</b>` });
+
+  /* event log, newest first */
+  $("log").innerHTML = d.events.length ? d.events.slice().reverse().map(e => `<li><b>${fmt(e[0], 1)} s</b><span>${e[1]}</span></li>`).join("")
+                                        : `<li class="muted">nothing yet</li>`;
+}
+
+/* poll(): asks the referee for /data once a second and redraws the page. */
+async function poll() {
+  try { render(await (await fetch("/data", { cache: "no-store" })).json()); }
+  catch (e) { $("live").innerHTML = `<span class="dot" style="background:var(--critical)"></span>referee not reachable`; }
+}
+/* command(): sends a dashboard button or typed command to the referee (/cmd) and shows
+ * the boards' reply. */
+async function command(target, cmd) {
+  $("out").textContent = `${target} ← ${cmd} …`;
+  try {
+    const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target, cmd }) });
+    $("out").textContent = (await r.json()).reply;
+  } catch (e) { $("out").textContent = "could not reach the referee"; }
+}
+document.querySelectorAll("button[data-c]").forEach(b => b.onclick = () => command(b.dataset.t, b.dataset.c));
+$("send").onclick = () => { const c = $("cmd").value.trim(); if (c) command($("tgt").value, c); else $("out").textContent = "type a command first"; };
+$("cmd").addEventListener("keydown", e => { if (e.key === "Enter") $("send").click(); });
+poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>
